@@ -1,0 +1,6 @@
+{
+  "name": "Calculadora Animada",
+  "description": "Uma calculadora responsiva com animações suaves e alternância de temas claro/escuro, desenvolvida em React, Tailwind CSS e Framer Motion.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
