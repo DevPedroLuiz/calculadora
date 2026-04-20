@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 
-type ButtonVariant = 'default' | 'accent' | 'secondary';
+export type ButtonVariant = 'default' | 'accent' | 'secondary';
 
 interface ButtonProps {
   children: React.ReactNode;
@@ -12,7 +12,8 @@ interface ButtonProps {
 const variantStyles: Record<ButtonVariant, string> = {
   default:
     'bg-white/40 hover:bg-white/50 text-slate-800 dark:bg-white/10 dark:hover:bg-white/20 dark:text-white border border-white/20 dark:border-transparent',
-  accent: 'bg-orange-500/80 hover:bg-orange-500 text-white',
+  accent:
+    'bg-orange-500/80 hover:bg-orange-500 text-white',
   secondary:
     'bg-white/60 hover:bg-white/70 text-slate-800 dark:bg-white/20 dark:hover:bg-white/30 dark:text-slate-400 border border-white/20 dark:border-transparent',
 };
@@ -20,7 +21,12 @@ const variantStyles: Record<ButtonVariant, string> = {
 const baseStyle =
   'flex items-center justify-center text-xl font-medium rounded-[18px] transition-colors outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 focus:ring-orange-500/50 shadow-sm backdrop-blur-sm';
 
-export function Button({ children, onClick, className = '', variant = 'default' }: ButtonProps) {
+export function Button({
+  children,
+  onClick,
+  className = '',
+  variant = 'default',
+}: ButtonProps) {
   return (
     <motion.button
       whileTap={{ scale: 0.92 }}

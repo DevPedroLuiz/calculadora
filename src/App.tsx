@@ -4,7 +4,7 @@ import { Sun, Moon, Delete } from 'lucide-react';
 import { Button } from './components/Button';
 import { calculate, type Operation } from './utils/calculate';
 
-// Keys the calculator actually handles — only these get preventDefault
+// Only keys the calculator handles — prevents blocking Ctrl+R, F5, tab, etc.
 const HANDLED_KEYS = new Set([
   '0','1','2','3','4','5','6','7','8','9',
   '.', '=', 'Enter', 'Backspace', 'Escape',
@@ -12,7 +12,7 @@ const HANDLED_KEYS = new Set([
 ]);
 
 export default function App() {
-  // Persist theme: respect OS preference on first load, then remember user choice
+  // Persist theme: respect OS preference on first load, remember user choice after
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     const stored = localStorage.getItem('calc-dark-mode');
     if (stored !== null) return stored === 'true';
@@ -23,16 +23,12 @@ export default function App() {
   const [previousValue, setPreviousValue] = useState<string | null>(null);
   const [operation, setOperation] = useState<Operation | null>(null);
   const [overwrite, setOverwrite] = useState(false);
-  // Error is now a separate boolean; currentValue stays numeric
+  // error is now a separate concern — currentValue stays numeric/clean
   const [error, setError] = useState<string | null>(null);
 
-  // Sync dark mode class + persist preference
+  // Sync dark mode class and persist preference
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', darkMode);
     localStorage.setItem('calc-dark-mode', String(darkMode));
   }, [darkMode]);
 
@@ -61,7 +57,7 @@ export default function App() {
     (num: string) => {
       if (error) clear();
       if (overwrite) {
-        setCurrentValue(num);
+        setCurrentValue(num === '.' ? '0.' : num);
         setOverwrite(false);
         return;
       }
@@ -79,7 +75,7 @@ export default function App() {
     (op: Operation) => {
       if (error) clear();
 
-      // Allow starting a negative number
+      // Allow typing a negative number from scratch
       if (op === '-' && currentValue === '0' && previousValue === null) {
         setCurrentValue('-');
         return;
@@ -99,16 +95,14 @@ export default function App() {
           const result = calculate(previousValue, currentValue, operation);
           setPreviousValue(result);
           setCurrentValue(result);
+          setOperation(op);
+          setOverwrite(true);
         } catch {
-          setError('Divisão por zero');
-          setCurrentValue('0');
+          setError('Erro: ÷ 0');
           setPreviousValue(null);
           setOperation(null);
           setOverwrite(false);
-          return;
         }
-        setOperation(op);
-        setOverwrite(true);
       }
     },
     [currentValue, previousValue, operation, error, clear],
@@ -120,9 +114,9 @@ export default function App() {
     try {
       const result = calculate(previousValue, currentValue, operation);
       setCurrentValue(result);
+      setError(null);
     } catch {
-      setError('Divisão por zero');
-      setCurrentValue('0');
+      setError('Erro: ÷ 0');
     } finally {
       setPreviousValue(null);
       setOperation(null);
@@ -136,29 +130,30 @@ export default function App() {
       if (!HANDLED_KEYS.has(e.key)) return;
       e.preventDefault();
 
-      if (/[0-9]/.test(e.key)) appendNumber(e.key);
-      else if (e.key === '.') appendNumber('.');
+      if (/[0-9]/.test(e.key))   appendNumber(e.key);
+      else if (e.key === '.')       appendNumber('.');
       else if (e.key === '=' || e.key === 'Enter') calculateResult();
       else if (e.key === 'Backspace') deleteChar();
-      else if (e.key === 'Escape') clear();
-      else if (e.key === '+') chooseOperation('+');
-      else if (e.key === '-') chooseOperation('-');
-      else if (e.key === '*') chooseOperation('×');
-      else if (e.key === '/') chooseOperation('÷');
-      else if (e.key === '%') chooseOperation('%');
+      else if (e.key === 'Escape')  clear();
+      else if (e.key === '+')       chooseOperation('+');
+      else if (e.key === '-')       chooseOperation('-');
+      else if (e.key === '*')       chooseOperation('×');
+      else if (e.key === '/')       chooseOperation('÷');
+      else if (e.key === '%')       chooseOperation('%');
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [appendNumber, calculateResult, deleteChar, clear, chooseOperation]);
 
-  const displayValue = error ? error : currentValue;
+  const displayValue = error ?? currentValue;
   const isError = error !== null;
 
   return (
     <div className="min-h-screen transition-colors duration-500 flex items-center justify-center p-4 bg-slate-100 dark:bg-slate-900 font-sans relative z-0 overflow-hidden">
-      {/* Abstract Mesh Background */}
+      {/* Abstract mesh background */}
       <div
+        aria-hidden="true"
         className="absolute inset-0 pointer-events-none -z-10 transition-opacity duration-1000"
         style={{
           background:
@@ -176,13 +171,13 @@ export default function App() {
       >
         {/* Header */}
         <div className="flex justify-between items-center px-1">
-          <div className="text-xs font-bold tracking-widest text-slate-800/40 dark:text-white/50 uppercase">
+          <span className="text-xs font-bold tracking-widest text-slate-800/40 dark:text-white/50 uppercase select-none">
             Calc
-          </div>
+          </span>
           <button
             onClick={() => setDarkMode((d) => !d)}
+            aria-label={darkMode ? 'Ativar tema claro' : 'Ativar tema escuro'}
             className="p-2 rounded-full cursor-pointer bg-white/40 dark:bg-white/10 text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-white/20 transition backdrop-blur-md"
-            aria-label="Alternar tema"
           >
             <AnimatePresence mode="wait" initial={false}>
               {darkMode ? (
@@ -211,16 +206,22 @@ export default function App() {
         </div>
 
         {/* Display */}
-        <div className="flex flex-col items-end px-2 pt-6 pb-2 h-32 justify-end">
-          <div className="text-slate-600/50 dark:text-white/40 text-lg min-h-[28px] overflow-hidden">
+        <div
+          role="region"
+          aria-label="Display da calculadora"
+          className="flex flex-col items-end px-2 pt-6 pb-2 h-32 justify-end"
+        >
+          <div className="text-slate-600/50 dark:text-white/40 text-lg min-h-[28px] overflow-hidden select-none">
             {previousValue} {operation}
           </div>
           <motion.div
             key={displayValue}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
+            aria-live="polite"
+            aria-atomic="true"
             className={`text-right font-light tracking-tight overflow-hidden break-all leading-tight ${
-              displayValue.length > 10 ? 'text-4xl' : 'text-5xl lg:text-6xl'
+              displayValue.length > 10 ? 'text-3xl' : 'text-5xl lg:text-6xl'
             } ${isError ? 'text-red-500' : 'text-slate-800 dark:text-white'}`}
           >
             {displayValue}
@@ -230,7 +231,7 @@ export default function App() {
         {/* Keypad */}
         <div className="grid grid-cols-4 gap-3 h-96">
           <Button onClick={clear} variant="secondary">AC</Button>
-          <Button onClick={deleteChar} variant="secondary">
+          <Button onClick={deleteChar} variant="secondary" aria-label="Apagar">
             <Delete size={24} />
           </Button>
           <Button onClick={() => chooseOperation('%')} variant="secondary">%</Button>
