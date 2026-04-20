@@ -1,27 +1,39 @@
-// Calculadora Animada - Copyright (C) 2025 <Seu Nome>
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License.
-
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sun, Moon, Delete } from 'lucide-react';
+import { Button } from './components/Button';
+import { calculate, type Operation } from './utils/calculate';
+
+// Keys the calculator actually handles — only these get preventDefault
+const HANDLED_KEYS = new Set([
+  '0','1','2','3','4','5','6','7','8','9',
+  '.', '=', 'Enter', 'Backspace', 'Escape',
+  '+', '-', '*', '/', '%',
+]);
 
 export default function App() {
-  const [darkMode, setDarkMode] = useState(false);
+  // Persist theme: respect OS preference on first load, then remember user choice
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const stored = localStorage.getItem('calc-dark-mode');
+    if (stored !== null) return stored === 'true';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
   const [currentValue, setCurrentValue] = useState('0');
   const [previousValue, setPreviousValue] = useState<string | null>(null);
-  const [operation, setOperation] = useState<string | null>(null);
+  const [operation, setOperation] = useState<Operation | null>(null);
   const [overwrite, setOverwrite] = useState(false);
-  const [error, setError] = useState(false);
+  // Error is now a separate boolean; currentValue stays numeric
+  const [error, setError] = useState<string | null>(null);
 
-  // Tema Escuro/Claro
+  // Sync dark mode class + persist preference
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
+    localStorage.setItem('calc-dark-mode', String(darkMode));
   }, [darkMode]);
 
   const clear = useCallback(() => {
@@ -29,170 +41,148 @@ export default function App() {
     setPreviousValue(null);
     setOperation(null);
     setOverwrite(false);
-    setError(false);
+    setError(null);
   }, []);
 
   const deleteChar = useCallback(() => {
-    if (error) {
-      clear();
-      return;
-    }
-    if (overwrite) {
-      clear();
-      return;
-    }
-    if (currentValue.length === 1 || (currentValue.length === 2 && currentValue.startsWith('-'))) {
+    if (error) { clear(); return; }
+    if (overwrite) { clear(); return; }
+    if (
+      currentValue.length === 1 ||
+      (currentValue.length === 2 && currentValue.startsWith('-'))
+    ) {
       setCurrentValue('0');
     } else {
-      setCurrentValue(currentValue.slice(0, -1));
+      setCurrentValue((v) => v.slice(0, -1));
     }
   }, [currentValue, overwrite, error, clear]);
 
-  const appendNumber = useCallback((num: string) => {
-    if (error) clear();
-    if (overwrite) {
-      setCurrentValue(num);
-      setOverwrite(false);
-      return;
-    }
-    if (num === '.' && currentValue.includes('.')) return;
-    if (currentValue === '0' && num !== '.') {
-      setCurrentValue(num);
-    } else {
-      setCurrentValue(currentValue + num);
-    }
-  }, [currentValue, overwrite, error, clear]);
-
-  const calculate = (a: string, b: string, op: string) => {
-    const prev = parseFloat(a);
-    const current = parseFloat(b);
-    if (isNaN(prev) || isNaN(current)) return '';
-    let computation = 0;
-    switch (op) {
-      case '+': computation = prev + current; break;
-      case '-': computation = prev - current; break;
-      case '×': computation = prev * current; break;
-      case '÷':
-        if (current === 0) return 'Erro';
-        computation = prev / current;
-        break;
-      case '%': computation = prev % current; break;
-    }
-    return String(Math.round(computation * 100000000) / 100000000);
-  };
-
-  const chooseOperation = useCallback((op: string) => {
-    if (error) clear();
-    if (currentValue === '0' && previousValue === null) {
-      // Se não tem nada e é menos, pode ser para deixar o número negativo
-      if (op === '-') {
-          setCurrentValue('-');
-          return;
+  const appendNumber = useCallback(
+    (num: string) => {
+      if (error) clear();
+      if (overwrite) {
+        setCurrentValue(num);
+        setOverwrite(false);
+        return;
       }
-    }
-    if (currentValue === '-' || currentValue === 'Erro') return;
-      
-    if (previousValue == null) {
-      setPreviousValue(currentValue);
-      setOperation(op);
-      setOverwrite(true);
-      return;
-    }
-    if (operation) {
-      const result = calculate(previousValue, currentValue, operation);
-      if (result === 'Erro') {
-        setError(true);
-        setCurrentValue('Erro');
+      if (num === '.' && currentValue.includes('.')) return;
+      if (currentValue === '0' && num !== '.') {
+        setCurrentValue(num);
       } else {
-        setPreviousValue(result);
-        setCurrentValue(result);
+        setCurrentValue((v) => v + num);
       }
-      setOperation(op);
-      setOverwrite(true);
-    }
-  }, [currentValue, previousValue, operation, error, clear]);
+    },
+    [currentValue, overwrite, error, clear],
+  );
+
+  const chooseOperation = useCallback(
+    (op: Operation) => {
+      if (error) clear();
+
+      // Allow starting a negative number
+      if (op === '-' && currentValue === '0' && previousValue === null) {
+        setCurrentValue('-');
+        return;
+      }
+
+      if (currentValue === '-') return;
+
+      if (previousValue === null) {
+        setPreviousValue(currentValue);
+        setOperation(op);
+        setOverwrite(true);
+        return;
+      }
+
+      if (operation) {
+        try {
+          const result = calculate(previousValue, currentValue, operation);
+          setPreviousValue(result);
+          setCurrentValue(result);
+        } catch {
+          setError('Divisão por zero');
+          setCurrentValue('0');
+          setPreviousValue(null);
+          setOperation(null);
+          setOverwrite(false);
+          return;
+        }
+        setOperation(op);
+        setOverwrite(true);
+      }
+    },
+    [currentValue, previousValue, operation, error, clear],
+  );
 
   const calculateResult = useCallback(() => {
-    if (operation == null || previousValue == null) return;
-    const result = calculate(previousValue, currentValue, operation);
-    
-    if (result === 'Erro') {
-        setError(true);
+    if (operation === null || previousValue === null) return;
+
+    try {
+      const result = calculate(previousValue, currentValue, operation);
+      setCurrentValue(result);
+    } catch {
+      setError('Divisão por zero');
+      setCurrentValue('0');
+    } finally {
+      setPreviousValue(null);
+      setOperation(null);
+      setOverwrite(true);
     }
-    
-    setCurrentValue(result);
-    setPreviousValue(null);
-    setOperation(null);
-    setOverwrite(true);
   }, [currentValue, previousValue, operation]);
 
-  // Teclado
+  // Keyboard support — only preventDefault for keys the calculator uses
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      e.preventDefault(); // Prevents default browser behaviors like scrolling with Spacebar
+      if (!HANDLED_KEYS.has(e.key)) return;
+      e.preventDefault();
+
       if (/[0-9]/.test(e.key)) appendNumber(e.key);
-      if (e.key === '.') appendNumber('.');
-      if (e.key === '=' || e.key === 'Enter') calculateResult();
-      if (e.key === 'Backspace') deleteChar();
-      if (e.key === 'Escape') clear();
-      if (e.key === '+') chooseOperation('+');
-      if (e.key === '-') chooseOperation('-');
-      if (e.key === '*') chooseOperation('×');
-      if (e.key === '/') chooseOperation('÷');
-      if (e.key === '%') chooseOperation('%');
+      else if (e.key === '.') appendNumber('.');
+      else if (e.key === '=' || e.key === 'Enter') calculateResult();
+      else if (e.key === 'Backspace') deleteChar();
+      else if (e.key === 'Escape') clear();
+      else if (e.key === '+') chooseOperation('+');
+      else if (e.key === '-') chooseOperation('-');
+      else if (e.key === '*') chooseOperation('×');
+      else if (e.key === '/') chooseOperation('÷');
+      else if (e.key === '%') chooseOperation('%');
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [appendNumber, calculateResult, deleteChar, clear, chooseOperation]);
 
-  // Componente de botão encapsulado
-  const Button = ({ children, onClick, className = '', variant = 'default' }: any) => {
-    const baseStyle = "flex items-center justify-center text-xl font-medium rounded-[18px] transition-colors outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 focus:ring-orange-500/50 shadow-sm backdrop-blur-sm";
-    
-    const variants = {
-      default: "bg-white/40 hover:bg-white/50 text-slate-800 dark:bg-white/10 dark:hover:bg-white/20 dark:text-white border border-white/20 dark:border-transparent",
-      accent: "bg-orange-500/80 hover:bg-orange-500 text-white",
-      secondary: "bg-white/60 hover:bg-white/70 text-slate-800 dark:bg-white/20 dark:hover:bg-white/30 dark:text-slate-400 border border-white/20 dark:border-transparent",
-    };
-
-    return (
-      <motion.button
-        whileTap={{ scale: 0.92 }}
-        whileHover={{ scale: 1.02 }}
-        className={`${baseStyle} ${variants[variant as keyof typeof variants]} ${className}`}
-        onClick={onClick}
-      >
-        {children}
-      </motion.button>
-    );
-  };
+  const displayValue = error ? error : currentValue;
+  const isError = error !== null;
 
   return (
-    <div className={`min-h-screen transition-colors duration-500 flex items-center justify-center p-4 bg-slate-100 dark:bg-slate-900 font-sans relative z-0 overflow-hidden`}>
+    <div className="min-h-screen transition-colors duration-500 flex items-center justify-center p-4 bg-slate-100 dark:bg-slate-900 font-sans relative z-0 overflow-hidden">
       {/* Abstract Mesh Background */}
-      <div 
+      <div
         className="absolute inset-0 pointer-events-none -z-10 transition-opacity duration-1000"
         style={{
-          background: 'radial-gradient(circle at 20% 20%, #3b82f6 0%, transparent 40%), radial-gradient(circle at 80% 80%, #f43f5e 0%, transparent 40%), radial-gradient(circle at 50% 50%, #8b5cf6 0%, transparent 50%)',
+          background:
+            'radial-gradient(circle at 20% 20%, #3b82f6 0%, transparent 40%), radial-gradient(circle at 80% 80%, #f43f5e 0%, transparent 40%), radial-gradient(circle at 50% 50%, #8b5cf6 0%, transparent 50%)',
           filter: 'blur(80px)',
           opacity: darkMode ? 0.3 : 0.15,
         }}
       />
-      
-      <motion.div 
+
+      <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
         className="w-full max-w-sm rounded-[40px] p-8 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.4)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.6)] bg-white/40 dark:bg-black/40 backdrop-blur-[24px] border border-white/40 dark:border-white/10 flex flex-col gap-5 relative z-10"
       >
-        {/* Cabeçalho */}
+        {/* Header */}
         <div className="flex justify-between items-center px-1">
           <div className="text-xs font-bold tracking-widest text-slate-800/40 dark:text-white/50 uppercase">
             Calc
           </div>
-          <button 
-            onClick={() => setDarkMode(!darkMode)}
+          <button
+            onClick={() => setDarkMode((d) => !d)}
             className="p-2 rounded-full cursor-pointer bg-white/40 dark:bg-white/10 text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-white/20 transition backdrop-blur-md"
+            aria-label="Alternar tema"
           >
             <AnimatePresence mode="wait" initial={false}>
               {darkMode ? (
@@ -225,21 +215,21 @@ export default function App() {
           <div className="text-slate-600/50 dark:text-white/40 text-lg min-h-[28px] overflow-hidden">
             {previousValue} {operation}
           </div>
-          <motion.div 
-            key={currentValue}
+          <motion.div
+            key={displayValue}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className={`text-right font-light tracking-tight overflow-hidden break-all leading-tight ${
-              currentValue.length > 10 ? 'text-4xl' : 'text-5xl lg:text-6xl'
-            } ${error ? 'text-red-500' : 'text-slate-800 dark:text-white'}`}
+              displayValue.length > 10 ? 'text-4xl' : 'text-5xl lg:text-6xl'
+            } ${isError ? 'text-red-500' : 'text-slate-800 dark:text-white'}`}
           >
-            {currentValue}
+            {displayValue}
           </motion.div>
         </div>
 
-        {/* Teclado */}
+        {/* Keypad */}
         <div className="grid grid-cols-4 gap-3 h-96">
-          <Button onClick={clear} variant="secondary" className="text-slate-800 dark:text-slate-400">AC</Button>
+          <Button onClick={clear} variant="secondary">AC</Button>
           <Button onClick={deleteChar} variant="secondary">
             <Delete size={24} />
           </Button>
