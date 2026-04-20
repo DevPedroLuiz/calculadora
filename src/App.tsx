@@ -1,3 +1,8 @@
+// Calculadora Animada - Copyright (C) 2025 <Seu Nome>
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License.
+
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sun, Moon, Delete } from 'lucide-react';
